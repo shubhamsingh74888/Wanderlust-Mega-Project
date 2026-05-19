@@ -1,0 +1,102 @@
+# ============================================================
+# Core Network Core Infrastructure Module
+# Handles VPC, Border Gateways, and Base Route Table Rules
+# ============================================================
+
+locals {
+  name_prefix = "${var.project_name}-${var.environment}"
+}
+
+# ── VPC ──────────────────────────────────────────────────────
+resource "aws_vpc" "main" {
+  cidr_block           = var.vpc_cidr
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name        = "${local.name_prefix}-vpc"
+    Environment = var.environment
+    Project     = var.project_name
+  }
+}
+
+# ── Internet Gateway ─────────────────────────────────────────
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name        = "${local.name_prefix}-igw"
+    Environment = var.environment
+    Project     = var.project_name
+  }
+}
+
+# ============================================================
+# COMMENTED OUT TO ELIMINATE NAT GATEWAY HOURLY CHARGES
+# ============================================================
+/*
+# ── Elastic IP for NAT Gateway ───────────────────────────────
+resource "aws_eip" "nat" {
+  domain = "vpc"
+
+  tags = {
+    Name        = "${local.name_prefix}-nat-eip"
+    Environment = var.environment
+    Project     = var.project_name
+  }
+
+  depends_on = [aws_internet_gateway.main]
+}
+
+# ── NAT Gateway ──────────────────────────────────────────────
+# Provisions high-availability egress node for private subnets.
+# Tied explicitly to the primary index subnet block.
+resource "aws_nat_gateway" "main" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public[0].id
+
+  tags = {
+    Name        = "${local.name_prefix}-nat"
+    Environment = var.environment
+    Project     = var.project_name
+  }
+
+  depends_on = [aws_internet_gateway.main]
+}
+*/
+
+# ── Route Table: Public ───────────────────────────────────────
+# Establishes edge perimeter routing for public DMZ networks
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = {
+    Name        = "${local.name_prefix}-public-rt"
+    Environment = var.environment
+    Project     = var.project_name
+  }
+}
+
+# ── Route Table: Private ─────────────────────────────────────
+# Kept intact to preserve downstream subnet associations.
+# Internal routing block disabled to prevent dependency errors.
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.main.id
+
+  # Inside route block pointing to NAT has been commented out for cost savings
+  # route {
+  #   cidr_block     = "0.0.0.0/0"
+  #   nat_gateway_id = aws_nat_gateway.main.id
+  # }
+
+  tags = {
+    Name        = "${local.name_prefix}-private-rt"
+    Environment = var.environment
+    Project     = var.project_name
+  }
+}

@@ -1,0 +1,61 @@
+# ============================================================
+# CI/CD Module Variables Definition
+# ============================================================
+
+variable "project_name" {
+  type        = string
+  description = "Project name prefix"
+}
+
+variable "environment" {
+  type        = string
+  description = "Target deployment environment"
+}
+
+variable "aws_region" {
+  type        = string
+  description = "Target AWS region"
+}
+
+# ── Network Layout Inputs ────────────────────────────────────
+variable "vpc_id" {
+  type        = string
+  description = "VPC ID target mapping"
+}
+
+variable "subnet_id" {
+  type        = string
+  description = "Public Subnet ID where Jenkins will be hosted"
+}
+
+# ── Compute Capacity Inputs ──────────────────────────────────
+variable "instance_type" {
+  type        = string
+  description = "EC2 computing tier for Jenkins"
+}
+
+variable "ami_id" {
+  type        = string
+  description = "Base machine OS platform image"
+}
+
+variable "root_volume_size" {
+  type        = number
+  description = "Root operating system space allocation in GB"
+}
+
+variable "data_volume_size" {
+  type        = number
+  description = "Dedicated persistent storage space in GB"
+}
+
+variable "backup_s3_bucket" {
+  type        = string
+  description = "S3 destination target for pipeline state captures"
+}
+
+variable "allowed_ssh_cidr" {
+  type        = string
+  description = "Firewall boundary restriction network pattern"
+  default     = "0.0.0.0/0"
+}
