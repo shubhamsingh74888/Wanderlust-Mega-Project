@@ -22,10 +22,14 @@ done
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -y
 sudo apt-get upgrade -y
+
+# Added Node.js setup to prevent node_modules / npm install pipeline failures
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+
 sudo apt-get install -y \
   ca-certificates curl software-properties-common \
-  fontconfig openjdk-21-jre unzip wget tar jq
-echo "[STATUS] Core dependencies provisioned successfully."
+  fontconfig openjdk-21-jre unzip wget tar jq nodejs
+echo "[STATUS] Core dependencies and Node.js provisioned successfully."
 
 sudo mkdir -p /usr/share/keyrings /etc/apt/keyrings /etc/apt/sources.list.d
 
