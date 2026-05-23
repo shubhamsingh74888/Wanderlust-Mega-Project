@@ -1,31 +1,43 @@
-# Stage 1
-FROM node:21 AS backend-builder
+# ── Stage 1: Build & Test ─────────────────────────────────────────────────────
+FROM node:21-alpine AS builder
 
-# setup the working dir
 WORKDIR /app
 
-# code
+# Copy manifests and install dependencies
+COPY package*.json ./
+RUN npm ci --prefer-offline
+
+# Copy application source
 COPY . .
 
-# packages install
-RUN npm i
-
-# tests
+# Ensure tests pass before proceeding
 RUN npm run test
 
-# Stage 2
-FROM node:21-slim
+# ── Stage 2: Production Image ─────────────────────────────────────────────────
+FROM node:21-alpine AS production
 
-# setup the working dir
+ENV NODE_ENV=production
+
 WORKDIR /app
 
-# copy the above stage as compressed
-COPY --from=backend-builder /app .
+# Copy production-ready dependencies
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
 
+# Copy the server entry point and application modules in groups
+COPY --from=builder /app/server.js ./
+COPY --from=builder /app/api ./api
+COPY --from=builder /app/config ./config
+COPY --from=builder /app/controllers ./controllers
+COPY --from=builder /app/models ./models
+COPY --from=builder /app/routes ./routes
+COPY --from=builder /app/services ./services
+COPY --from=builder /app/utils ./utils
+COPY --from=builder /app/public ./public
+
+# Final configurations
 COPY .env.docker .env
 
-# Port
 EXPOSE 8080
 
-# App
 CMD ["npm", "start"]
