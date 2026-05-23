@@ -8,13 +8,13 @@
 wanderlustPipeline(
   // ── Project Identity ──────────────────────────────────
   projectName        : 'wanderlust',
-  gitRepoUrl         : 'https://github.com/shubhamsingh74888/Wanderlust-Mega-Project.git',
-  gitopsRepoUrl      : 'https://github.com/shubhamsingh74888/Wanderlust-Mega-Project.git',
+  gitRepoUrl         : 'https://github.com/shubham74888/Wanderlust-Mega-Project.git',
+  gitopsRepoUrl      : 'https://github.com/shubham74888/Wanderlust-Mega-Project.git',
 
   // ── Registry ──────────────────────────────────────────
-  registryNamespace  : 'shubhamsingh74888',
-  imageFrontend      : 'shubhamsingh74888/wanderlust',
-  imageBackend       : 'shubhamsingh74888/wanderlust',
+  registryNamespace  : 'shubham74888',
+  imageFrontend      : 'shubham74888/wanderlust-frontend'
+  imageBackend       : 'shubham74888/wanderlust-backend',
 
   // ── Source Layout ─────────────────────────────────────
   frontendDir        : 'frontend',

@@ -18,8 +18,8 @@ spec:
     spec:
       containers:
         - name: backend
-          # !! CHANGE: Replace YOUR_DOCKERHUB_USERNAME with your Docker Hub username
-          image: YOUR_DOCKERHUB_USERNAME/wanderlust-backend:backend-latest
+          # !! CHANGE: Replace shubham74888 with your Docker Hub username
+          image: shubham74888/wanderlust-backend:backend-latest
           ports:
             - containerPort: 8080
           resources:

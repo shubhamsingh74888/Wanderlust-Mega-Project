@@ -18,8 +18,8 @@ spec:
     spec:
       containers:
         - name: frontend
-          # !! CHANGE: Replace YOUR_DOCKERHUB_USERNAME with your Docker Hub username
-          image: YOUR_DOCKERHUB_USERNAME/wanderlust-frontend:frontend-latest
+          # !! CHANGE: Replace shubham74888 with your Docker Hub username
+          image: shubham74888/wanderlust-frontend:frontend-latest
           ports:
             - containerPort: 80
           resources:
