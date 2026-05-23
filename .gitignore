@@ -11,6 +11,7 @@ yarn-error.log*
 *.tfstate
 *.tfstate.*
 *.lock.hcl
+*.tfplan
 
 # ── 3. Application Secrets & Local Environments ──────────────
 .env

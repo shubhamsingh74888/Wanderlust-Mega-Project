@@ -1,39 +1,81 @@
 version: "3.8"
+
 services:
+
   mongodb:
     container_name: mongo-service
-    image: mongo:latest
+    image: mongo:7.0
     volumes:
-      - ./backend/data:/data
+      - mongo-data:/data/db
     ports:
       - "27017:27017"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping').ok", "--quiet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  redis:
+    container_name: redis-service
+    image: redis:7.2-alpine
+    expose:
+      - 6379
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      mongodb:
+        condition: service_healthy
 
   backend:
     container_name: backend
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     env_file:
       - ./backend/.env.docker
     ports:
       - "31100:8080"
+    restart: unless-stopped
+    healthcheck:
+      # !! CHANGE: update path if your health endpoint differs
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:8080/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   frontend:
     container_name: frontend
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     env_file:
       - ./frontend/.env.docker
     ports:
-      - "5173:5173"
-
-  redis:
-    container_name: redis-service
+      - "80:80"
     restart: unless-stopped
-    image: redis:7.0.5-alpine 
-    expose:
-        - 6379
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:80"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     depends_on:
-      - mongodb
+      backend:
+        condition: service_healthy
 
 volumes:
-  data:
+  mongo-data:
+    driver: local

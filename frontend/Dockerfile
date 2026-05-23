@@ -1,32 +1,42 @@
-# ------------------- Stage 1: Build Stage ------------------------------
-FROM node:21 AS frontend-builder
+# ── Stage 1: Dependencies ──────────────────────────────────────────────────────
+FROM node:21-alpine AS deps
 
-# Set the working directory to /app
 WORKDIR /app
 
-# Copy the package.json and package-lock.json for dependency installation
+# Copy manifests first — Docker cache layer only invalidates when these change,
+# not on every source file edit.
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install
+RUN npm ci --prefer-offline
 
-# Copy the rest of the application code
-COPY . .
+# ── Stage 2: Build ─────────────────────────────────────────────────────────────
+FROM node:21-alpine AS builder
 
-# ------------------- Stage 2: Final Stage ------------------------------
-FROM node:21-slim
-
-# Set the working directory to /app
 WORKDIR /app
 
-# Copy built assets and dependencies from frontend-builder stage
-COPY --from=frontend-builder /app .
+# Reuse node_modules from deps stage
+COPY --from=deps /app/node_modules ./node_modules
 
-# Copy the .env.sample file to .env.local
+# Copy source
+COPY . .
+
+# Copy the docker env file so Vite bakes the correct API URL at build time
 COPY .env.docker .env.local
 
-# Expose port 5173 for the Node.js application
-EXPOSE 5173
+RUN npm run build
 
-# Define the default command to run the application in development mode
-CMD ["npm", "run", "dev", "--", "--host"]
+# ── Stage 3: Production Server (nginx) ─────────────────────────────────────────
+FROM nginx:1.27-alpine AS production
+
+# Remove default nginx welcome page
+RUN rm -rf /usr/share/nginx/html/*
+
+# Copy Vite build output into nginx's serve directory
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Custom nginx config — handles SPA client-side routing
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
