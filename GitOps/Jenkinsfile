@@ -1,125 +1,65 @@
-@Library('Shared') _
-pipeline {
-    agent {label 'Node'}
-    
-    parameters {
-        string(name: 'FRONTEND_DOCKER_TAG', defaultValue: '', description: 'Frontend Docker tag of the image built by the CI job')
-        string(name: 'BACKEND_DOCKER_TAG', defaultValue: '', description: 'Backend Docker tag of the image built by the CI job')
-    }
+// ============================================================
+//  vars/pipelineDeploy.groovy
+//  Deploy Stage Module
+//  Exposes:
+//    pipelineDeploy.gitopsUpdate(cfg, utils)
+//
+//  Updates Kubernetes manifests in the GitOps repo.
+//  ArgoCD detects the change and auto-syncs to the cluster.
+// ============================================================
 
-    stages {
-        stage("Workspace cleanup"){
-            steps{
-                script{
-                    cleanWs()
-                }
-            }
-        }
-        
-        stage('Git: Code Checkout') {
-            steps {
-                script{
-                    code_checkout("https://github.com/LondheShubham153/Wanderlust-Mega-Project.git","main")
-                }
-            }
-        }
-        
-        stage('Verify: Docker Image Tags') {
-            steps {
-                script{
-                    echo "FRONTEND_DOCKER_TAG: ${params.FRONTEND_DOCKER_TAG}"
-                    echo "BACKEND_DOCKER_TAG: ${params.BACKEND_DOCKER_TAG}"
-                }
-            }
-        }
-        
-        
-        stage("Update: Kubernetes manifests"){
-            steps{
-                script{
-                    dir('kubernetes'){
-                        sh """
-                            sed -i -e s/wanderlust-backend-beta.*/wanderlust-backend-beta:${params.BACKEND_DOCKER_TAG}/g backend.yaml
-                        """
-                    }
-                    
-                    dir('kubernetes'){
-                        sh """
-                            sed -i -e s/wanderlust-frontend-beta.*/wanderlust-frontend-beta:${params.FRONTEND_DOCKER_TAG}/g frontend.yaml
-                        """
-                    }
-                    
-                }
-            }
-        }
-        
-        stage("Git: Code update and push to GitHub"){
-            steps{
-                script{
-                    withCredentials([gitUsernamePassword(credentialsId: 'Github-cred', gitToolName: 'Default')]) {
-                        sh '''
-                        echo "Checking repository status: "
-                        git status
-                    
-                        echo "Adding changes to git: "
-                        git add .
-                        
-                        echo "Commiting changes: "
-                        git commit -m "Updated environment variables"
-                        
-                        echo "Pushing changes to github: "
-                        git push https://github.com/LondheShubham153/Wanderlust-Mega-Project.git main
-                    '''
-                    }
-                }
-            }
-        }
-    }
-  post {
-        success {
-            script {
-                emailext attachLog: true,
-                from: 'trainwithshubham@gmail.com',
-                subject: "Wanderlust Application has been updated and deployed - '${currentBuild.result}'",
-                body: """
-                    <html>
-                    <body>
-                        <div style="background-color: #FFA07A; padding: 10px; margin-bottom: 10px;">
-                            <p style="color: black; font-weight: bold;">Project: ${env.JOB_NAME}</p>
-                        </div>
-                        <div style="background-color: #90EE90; padding: 10px; margin-bottom: 10px;">
-                            <p style="color: black; font-weight: bold;">Build Number: ${env.BUILD_NUMBER}</p>
-                        </div>
-                        <div style="background-color: #87CEEB; padding: 10px; margin-bottom: 10px;">
-                            <p style="color: black; font-weight: bold;">URL: ${env.BUILD_URL}</p>
-                        </div>
-                    </body>
-                    </html>
-            """,
-            to: 'trainwithshubham@gmail.com',
-            mimeType: 'text/html'
-            }
-        }
-      failure {
-            script {
-                emailext attachLog: true,
-                from: 'trainwithshubham@gmail.com',
-                subject: "Wanderlust Application build failed - '${currentBuild.result}'",
-                body: """
-                    <html>
-                    <body>
-                        <div style="background-color: #FFA07A; padding: 10px; margin-bottom: 10px;">
-                            <p style="color: black; font-weight: bold;">Project: ${env.JOB_NAME}</p>
-                        </div>
-                        <div style="background-color: #90EE90; padding: 10px; margin-bottom: 10px;">
-                            <p style="color: black; font-weight: bold;">Build Number: ${env.BUILD_NUMBER}</p>
-                        </div>
-                    </body>
-                    </html>
-            """,
-            to: 'trainwithshubham@gmail.com',
-            mimeType: 'text/html'
-            }
-        }
-    }
+def gitopsUpdate(def cfg, def utils) {
+  utils.sectionHeader('Stage 11 · GitOps · Kubernetes Manifest Update')
+
+  withCredentials([usernamePassword(
+    credentialsId : cfg.gitCredId,
+    usernameVariable: 'GIT_USER',
+    passwordVariable: 'GIT_TOKEN'
+  )]) {
+    sh """
+      echo "[GITOPS] Configuring git identity..."
+      git config --global user.email "jenkins@wanderlust.ci"
+      git config --global user.name  "Wanderlust Jenkins Bot"
+
+      # ── Update frontend deployment manifest ──────────────
+      FRONTEND_MANIFEST="${cfg.k8sManifestsDir}/${cfg.deployEnvironment}/frontend-deployment.yaml"
+      if [ -f "\$FRONTEND_MANIFEST" ]; then
+        echo "[GITOPS] Updating frontend image tag in: \$FRONTEND_MANIFEST"
+        sed -i 's|${cfg.imageFrontend}:frontend-b[0-9]*|${cfg.frontendImageTag}|g' "\$FRONTEND_MANIFEST"
+      else
+        echo "[GITOPS] ⚠ Frontend manifest not found: \$FRONTEND_MANIFEST"
+      fi
+
+      # ── Update backend deployment manifest ───────────────
+      BACKEND_MANIFEST="${cfg.k8sManifestsDir}/${cfg.deployEnvironment}/backend-deployment.yaml"
+      if [ -f "\$BACKEND_MANIFEST" ]; then
+        echo "[GITOPS] Updating backend image tag in: \$BACKEND_MANIFEST"
+        sed -i 's|${cfg.imageBackend}:backend-b[0-9]*|${cfg.backendImageTag}|g' "\$BACKEND_MANIFEST"
+      else
+        echo "[GITOPS] ⚠ Backend manifest not found: \$BACKEND_MANIFEST"
+      fi
+
+      # ── Stage and commit changes ──────────────────────────
+      git add ${cfg.k8sManifestsDir}/${cfg.deployEnvironment}/ || true
+
+      # Only commit if there are actual changes
+      if git diff --cached --quiet; then
+        echo "[GITOPS] No manifest changes detected. Skipping commit."
+      else
+        git commit -m "ci(gitops): update image tags → b${cfg.buildNumber} [skip ci]
+
+  Environment : ${cfg.deployEnvironment}
+  Frontend    : ${cfg.frontendImageTag}
+  Backend     : ${cfg.backendImageTag}
+  Commit      : ${cfg.gitCommitShort}
+  Author      : ${cfg.gitAuthor}
+  Build URL   : \${BUILD_URL}"
+
+        REPO_URL_WITH_CREDS="${cfg.gitopsRepoUrl.replace('https://', 'https://\${GIT_USER}:\${GIT_TOKEN}@')}"
+        git push "\$REPO_URL_WITH_CREDS" HEAD:main
+
+        echo "[GITOPS] ✔ Manifests pushed. ArgoCD will auto-sync."
+      fi
+    """
+  }
 }
