@@ -19,7 +19,7 @@ wanderlustPipeline(
   // ── Source Layout ─────────────────────────────────────
   frontendDir        : 'frontend',
   backendDir         : 'backend',
-  k8sManifestsDir    : 'kubernetes/prod',
+  k8sManifestsDir    : 'kubernetes/prod/production',
 
   // ── Jenkins Credential IDs ────────────────────────────
   dockerCredId       : 'docker',

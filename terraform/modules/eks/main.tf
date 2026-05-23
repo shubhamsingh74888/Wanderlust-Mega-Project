@@ -70,6 +70,11 @@ resource "aws_eks_cluster" "main" {
   role_arn = aws_iam_role.eks_cluster.arn
   version  = var.cluster_version
 
+access_config {
+    authentication_mode        = "API_AND_CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = true
+  } 
+
   vpc_config {
     # ✅ FIXED: Isolated strictly to secure back-channel private subnets
     subnet_ids              = var.private_subnet_ids

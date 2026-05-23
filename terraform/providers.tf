@@ -1,63 +1,55 @@
 # ============================================================
-# Root Orchestration Provider Constraints
+# Provider Configurations
 # ============================================================
 
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.5"
 
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.91.0"
-    }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.23"
+      version = "~> 5.0"
     }
     helm = {
       source  = "hashicorp/helm"
-      version = "~> 2.11"
+      version = "~> 2.0"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.0"
     }
   }
 }
 
-# AWS Provider — Automatically inherits active authorization profiles from your shell environment
+# ── AWS Provider ──────────────────────────────────────────────
 provider "aws" {
   region = var.aws_region
 }
 
-# ── NOTE: Kubernetes and Helm providers are currently commented out 
-# ── because the 'eks' module has not yet been deployed. 
-# ── Uncomment these blocks once your EKS cluster module is defined in main.tf.
+# ── Data source: read the EKS cluster that was just created ──
+# This dynamically pulls the endpoint + CA data so Helm/K8s
+# providers can authenticate without a pre-existing kubeconfig.
+data "aws_eks_cluster" "main" {
+  name = module.eks.cluster_name
+}
 
-# provider "kubernetes" {
-#   host                   = module.eks.cluster_endpoint
-#   cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-#
-#   exec {
-#     api_version = "client.authentication.k8s.io/v1beta1"
-#     command     = "aws"
-#     args = [
-#       "eks", "get-token",
-#       "--cluster-name", module.eks.cluster_name,
-#       "--region", var.aws_region
-#     ]
-#   }
-# }
+data "aws_eks_cluster_auth" "main" {
+  name = module.eks.cluster_name
+}
 
-# provider "helm" {
-#   kubernetes {
-#     host                   = module.eks.cluster_endpoint
-#     cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-#
-#     exec {
-#       api_version = "client.authentication.k8s.io/v1beta1"
-#       command     = "aws"
-#       args = [
-#         "eks", "get-token",
-#         "--cluster-name", module.eks.cluster_name,
-#         "--region", var.aws_region
-#       ]
-#     }
-#   }
-# }
+# ── Kubernetes Provider ───────────────────────────────────────
+provider "kubernetes" {
+  host                   = data.aws_eks_cluster.main.endpoint
+  cluster_ca_certificate = base64decode(data.aws_eks_cluster.main.certificate_authority[0].data)
+  token                  = data.aws_eks_cluster_auth.main.token
+}
+
+# ── Helm Provider ─────────────────────────────────────────────
+provider "helm" {
+  kubernetes {
+    host                   = data.aws_eks_cluster.main.endpoint
+    cluster_ca_certificate = base64decode(data.aws_eks_cluster.main.certificate_authority[0].data)
+    token                  = data.aws_eks_cluster_auth.main.token
+  }
+}
+

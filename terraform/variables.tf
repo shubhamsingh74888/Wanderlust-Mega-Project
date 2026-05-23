@@ -115,7 +115,12 @@ variable "eks_node_desired_size" {
   description = "Baseline persistent running capacity node allocation target"
 }
 
+# ── Addon Deployment Toggle ────────────────────────────────────
+# Keep false until EKS cluster is fully up, then set true to
+# deploy ArgoCD and Prometheus via Helm.
 variable "deploy_addons" {
-  type    = bool
-  default = false
+  type        = bool
+  default     = false
+  description = "Toggle to deploy Helm-based EKS addons (ArgoCD, Prometheus)"
 }
+
