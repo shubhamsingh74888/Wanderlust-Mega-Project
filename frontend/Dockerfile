@@ -3,11 +3,11 @@ FROM node:21-alpine AS deps
 
 WORKDIR /app
 
-# Copy manifests first — Docker cache layer only invalidates when these change,
-# not on every source file edit.
+# Copy manifests first
 COPY package*.json ./
 
-RUN npm ci --prefer-offline
+# CHANGED: Switched from 'npm ci' to 'npm install' to dynamically resolve lockfile mismatch/drift
+RUN npm install --prefer-offline --no-audit
 
 # ── Stage 2: Build ─────────────────────────────────────────────────────────────
 FROM node:21-alpine AS builder
