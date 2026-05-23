@@ -51,7 +51,7 @@ variable "availability_zones" {
 # ── Jenkins Infrastructure Parameters ──────────────────────────
 variable "jenkins_instance_type" {
   type        = string
-  default     = "t3.medium"
+  default     = "t3.large"
   description = "Compute hardware footprint size for Jenkins"
 }
 
