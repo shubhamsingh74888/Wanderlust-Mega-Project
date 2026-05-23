@@ -19,7 +19,10 @@ pipeline {
                             deployEnvironment: 'prod',
                             frontendImageTag: params.FRONTEND_DOCKER_TAG,
                             backendImageTag: params.BACKEND_DOCKER_TAG,
-                            gitCredId: 'github-token'
+                            gitCredId: 'github-token',
+                            buildNumber: env.BUILD_NUMBER,
+                            gitCommitShort: 'N/A', // Or pull from environment
+                            gitAuthor: 'Jenkins-Bot'
                         ],
                         utils: new org.wanderlust.Utils(this)
                     )
