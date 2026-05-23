@@ -1,5 +1,5 @@
 resource "helm_release" "prometheus" {
-  count = 0
+ count = var.deploy_addons ? 1 : 0 
   name             = "prometheus"
   repository       = "https://prometheus-community.github.io/helm-charts"
   chart            = "kube-prometheus-stack"

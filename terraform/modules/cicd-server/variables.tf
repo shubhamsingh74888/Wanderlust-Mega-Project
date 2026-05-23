@@ -59,3 +59,9 @@ variable "allowed_ssh_cidr" {
   description = "Firewall boundary restriction network pattern"
   default     = "0.0.0.0/0"
 }
+
+variable "deploy_addons" {
+  type    = bool
+  description = "Toggle to deploy EKS addons"
+  default = false
+}

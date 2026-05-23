@@ -114,3 +114,8 @@ variable "eks_node_desired_size" {
   default     = 2
   description = "Baseline persistent running capacity node allocation target"
 }
+
+variable "deploy_addons" {
+  type    = bool
+  default = false
+}

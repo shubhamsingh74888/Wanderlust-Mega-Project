@@ -14,6 +14,8 @@ module "vpc" {
 module "cicd_server" {
   source = "./modules/cicd-server"
 
+  deploy_addons = var.deploy_addons
+
   project_name = var.project_name
   environment  = var.environment
   aws_region   = var.aws_region
@@ -29,7 +31,7 @@ module "cicd_server" {
   backup_s3_bucket = var.backup_s3_bucket
 }
 
-/*
+
 # ── Step 3: Build the EKS Cluster ───────────────────────────
 module "eks" {
   source = "./modules/eks"
@@ -52,4 +54,4 @@ module "eks" {
 }
 
 
-*/
+
