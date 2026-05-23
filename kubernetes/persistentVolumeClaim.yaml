@@ -6,7 +6,8 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: ""
+  # Points to the EBS StorageClass defined in persistentVolume.yaml
+  storageClassName: "wanderlust-ebs"
   resources:
     requests:
       storage: 5Gi
