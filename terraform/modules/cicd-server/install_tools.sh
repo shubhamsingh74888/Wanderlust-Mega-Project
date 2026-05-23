@@ -1,3 +1,4 @@
+buntu@ip-172-31-10-17:~/Wanderlust-Mega-Project/terraform/modules/cicd-server$ cat install_tools.sh
 #!/bin/bash
 # ============================================================
 # Core Host Initialization Script
@@ -22,14 +23,10 @@ done
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -y
 sudo apt-get upgrade -y
-
-# Added Node.js setup to prevent node_modules / npm install pipeline failures
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-
 sudo apt-get install -y \
   ca-certificates curl software-properties-common \
-  fontconfig openjdk-21-jre unzip wget tar jq nodejs
-echo "[STATUS] Core dependencies and Node.js provisioned successfully."
+  fontconfig openjdk-21-jre unzip wget tar jq
+echo "[STATUS] Core dependencies provisioned successfully."
 
 sudo mkdir -p /usr/share/keyrings /etc/apt/keyrings /etc/apt/sources.list.d
 
@@ -129,12 +126,12 @@ else
   grep -q "$DEVICE_UUID" /etc/fstab || echo "UUID=$DEVICE_UUID /mnt/jenkins-data ext4 defaults,nofail 0 2" | sudo tee -a /etc/fstab
 
   sudo mkdir -p /mnt/jenkins-data/jenkins-home
-  
+
   JENKINS_HOME="/mnt/jenkins-data/jenkins-home"
   SQ_BASE_DIR="/mnt/jenkins-data/sonarqube"
 fi
 
-# Globalized Systemd profile injection to enforce custom home directory structures 
+# Globalized Systemd profile injection to enforce custom home directory structures
 sudo mkdir -p /etc/systemd/system/jenkins.service.d
 sudo tee /etc/systemd/system/jenkins.service.d/override.conf > /dev/null << OVERRIDE
 [Service]
@@ -191,7 +188,7 @@ user.save()
 def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
 strategy.setAllowAnonymousJobStatusPermission(false)
 instance.setAuthorizationStrategy(strategy)
-    
+
 instance.save()
 logger.info("[AUTOMATION] Security infrastructure verification complete. Custom credentials active.")
 EOF
@@ -244,3 +241,4 @@ echo "[INFO] Internal Persistent Path Directory: $JENKINS_HOME"
 echo "[INFO] Continuous Integration Hub UI:    http://$MASTER_IP:8080"
 echo "[INFO] Automated Security Scan Panel:    http://$MASTER_IP:9000"
 echo "=========================================================="
+ubuntu@ip-172-31-10-17:~/Wanderlust-Mega-Project/terraform/modules/cicd-serv
