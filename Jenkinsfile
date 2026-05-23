@@ -9,7 +9,7 @@ wanderlustPipeline(
   // ── Project Identity ──────────────────────────────────
   projectName        : 'wanderlust',
   gitRepoUrl         : 'https://github.com/shubhamsingh74888/Wanderlust-Mega-Project.git',
-  gitopsRepoUrl      : 'https://github.com/shubhamsingh74888/Wanderlust-Mega-Project.git',
+  gitopsRepoUrl      : 'https://github.com/shubhamsingh74888/wanderlust-gitops.git',
 
   // ── Registry ──────────────────────────────────────────
   registryNamespace  : 'shubham74888',
@@ -19,16 +19,16 @@ wanderlustPipeline(
   // ── Source Layout ─────────────────────────────────────
   frontendDir        : 'frontend',
   backendDir         : 'backend',
-  k8sManifestsDir    : 'kubernetes',
+  k8sManifestsDir    : 'kubernetes/prod',
 
   // ── Jenkins Credential IDs ────────────────────────────
-  dockerCredId       : 'dockerhub-creds',
-  gitCredId          : 'github-token',
-  nvdApiKeyId        : 'nvd-api-token',
+  dockerCredId       : 'docker',
+  gitCredId          : 'github',
+  nvdApiKeyId        : 'NVD_API_KEY',
 
   // ── SonarQube ─────────────────────────────────────────
   sonarServerName    : 'sonar-server',
-  sonarProjectKey    : 'Wanderlust-Core',
+  sonarProjectKey    : 'sonar',
 
   // ── Notifications ─────────────────────────────────────
   slackChannel       : '#wanderlust-cicd',
