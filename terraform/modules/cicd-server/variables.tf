@@ -2,7 +2,7 @@
 # CI/CD Module Variables Definition
 # ============================================================
 
-variable "project_name" {
+variable "project" {
   type        = string
   description = "Project name prefix"
 }
@@ -64,4 +64,28 @@ variable "deploy_addons" {
   type    = bool
   description = "Toggle to deploy EKS addons"
   default = false
+
+}
+
+
+
+variable "availability_zone" {
+  type        = string
+  description = "AZ for the EBS volume"
+}
+
+variable "ebs_volume_size" {
+  type        = number
+  description = "Size of the data volume"
+}
+
+variable "key_name" {
+  type        = string
+  description = "SSH key name"
+}
+
+variable "allowed_cidr_blocks" {
+  type        = list(string)
+  description = "List of allowed CIDR blocks for security group"
+  default     = ["0.0.0.0/0"] # Or your specific network range
 }

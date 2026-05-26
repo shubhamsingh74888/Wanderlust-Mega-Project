@@ -1,12 +1,12 @@
 
 output "public_ip" {
   description = "Jenkins server public IP"
-  value       = aws_instance.jenkins.public_ip
+  value       = aws_instance.cicd.public_ip
 }
 
 output "instance_id" {
   description = "Jenkins EC2 instance ID — use with terraform taint"
-  value       = aws_instance.jenkins.id
+  value       = aws_instance.cicd.id
 }
 
 output "ebs_volume_id" {
@@ -16,6 +16,6 @@ output "ebs_volume_id" {
 
 output "security_group_id" {
   description = "Jenkins security group ID — passed to EKS for cluster access"
-  value       = aws_security_group.jenkins.id
+  value       = aws_security_group.cicd.id
 }
 

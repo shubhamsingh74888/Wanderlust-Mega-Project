@@ -17,7 +17,7 @@ variable "environment" {
   }
 }
 
-variable "project_name" {
+variable "project" {
   type        = string
   description = "Core namespace prefix used as an identifier anchor for resources"
   default     = "wanderlust"
@@ -124,3 +124,17 @@ variable "deploy_addons" {
   description = "Toggle to deploy Helm-based EKS addons (ArgoCD, Prometheus)"
 }
 
+variable "deploy_eks" {
+  type        = bool
+  default     = true # Set to false to disable EKS entirely
+  description = "Toggle to enable or disable EKS cluster deployment"
+}
+
+variable "key_name" {
+  type = string
+}
+
+variable "allowed_cidr_blocks" {
+  type    = list(string)
+  default = ["0.0.0.0/0"]
+}

@@ -5,7 +5,7 @@
 # ============================================================
 
 #locals {
-# name_prefix = "${var.project_name}-${var.environment}"
+# name_prefix = "${var.project}-${var.environment}"
 #}
 
 # ── IAM Role ──────────────────────────────────────────────────
@@ -24,7 +24,7 @@ resource "aws_iam_role" "jenkins" {
   tags = {
     Name        = "${local.name_prefix}-jenkins-role"
     Environment = var.environment
-    Project     = var.project_name
+    Project     = var.project
   }
 }
 

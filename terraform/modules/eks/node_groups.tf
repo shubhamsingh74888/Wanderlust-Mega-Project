@@ -14,7 +14,7 @@ resource "aws_iam_role" "eks_nodes" {
   tags = {
     Name        = "${local.cluster_name}-node-role"
     Environment = var.environment
-    Project     = var.project_name
+    Project     = var.project
   }
 }
 
@@ -66,7 +66,7 @@ resource "aws_security_group" "eks_nodes" {
   tags = { 
     Name        = "${local.cluster_name}-nodes-sg"
     Environment = var.environment
-    Project     = var.project_name
+    Project     = var.project
   }
 }
 
@@ -98,7 +98,7 @@ resource "aws_eks_node_group" "main" {
   tags = {
     Name        = "${local.cluster_name}-node-group"
     Environment = var.environment
-    Project     = var.project_name
+    Project     = var.project
   }
 
   depends_on = [

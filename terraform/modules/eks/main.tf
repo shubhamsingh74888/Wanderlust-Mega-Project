@@ -6,7 +6,7 @@
 
 
 locals {
-  name_prefix  = "${var.project_name}-${var.environment}"
+  name_prefix  = "${var.project}-${var.environment}"
   cluster_name = "${local.name_prefix}-eks"
 }
 
@@ -26,7 +26,7 @@ resource "aws_iam_role" "eks_cluster" {
   tags = {
     Name        = "${local.cluster_name}-role"
     Environment = var.environment
-    Project     = var.project_name
+    Project     = var.project
   }
 }
 
@@ -60,7 +60,7 @@ resource "aws_security_group" "eks_cluster" {
   tags = { 
     Name        = "${local.cluster_name}-sg"
     Environment = var.environment
-    Project     = var.project_name
+    Project     = var.project
   }
 }
 
@@ -91,7 +91,7 @@ access_config {
   tags = {
     Name        = local.cluster_name
     Environment = var.environment
-    Project     = var.project_name
+    Project     = var.project
   }
 
   depends_on = [aws_iam_role_policy_attachment.eks_cluster_policy]

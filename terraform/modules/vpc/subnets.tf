@@ -10,7 +10,7 @@ resource "aws_subnet" "public" {
   tags = {
     Name                                                = "${local.name_prefix}-public-${var.availability_zones[count.index]}"
     Environment                                         = var.environment
-    Project                                             = var.project_name
+    Project                                             = var.project
     "kubernetes.io/role/elb"                            = "1" # Required by EKS AWS Load Balancer Controller for Public LBs
   }
 }
@@ -26,7 +26,7 @@ resource "aws_subnet" "private" {
   tags = {
     Name                                                = "${local.name_prefix}-private-${var.availability_zones[count.index]}"
     Environment                                         = var.environment
-    Project                                             = var.project_name
+    Project                                             = var.project
     "kubernetes.io/role/internal-elb"                   = "1" # Required by EKS AWS Load Balancer Controller for Private LBs
   }
 }

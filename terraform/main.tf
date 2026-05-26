@@ -7,7 +7,7 @@
 module "vpc" {
   source = "./modules/vpc"
 
-  project_name         = var.project_name
+  project              = var.project
   environment          = var.environment
   vpc_cidr             = var.vpc_cidr
   public_subnet_cidrs  = var.public_subnet_cidrs
@@ -19,7 +19,7 @@ module "vpc" {
 module "cicd_server" {
   source = "./modules/cicd-server"
 
-  project_name     = var.project_name
+  project          = var.project
   environment      = var.environment
   aws_region       = var.aws_region
   vpc_id           = module.vpc.vpc_id
@@ -30,13 +30,16 @@ module "cicd_server" {
   data_volume_size = var.jenkins_data_volume_size
   backup_s3_bucket = var.backup_s3_bucket
   deploy_addons    = var.deploy_addons
+  availability_zone = var.availability_zones[0]    # Mapping from your VPC AZs
+  ebs_volume_size   = var.jenkins_data_volume_size # Mapping to your existing volume var
+  key_name          = var.key_name
 }
 
 # ── Step 3: Build the EKS Cluster ────────────────────────────
 module "eks" {
   source = "./modules/eks"
-
-  project_name         = var.project_name
+  count         = var.deploy_eks ? 1 : 0
+  project              = var.project
   environment          = var.environment
   aws_region           = var.aws_region
   vpc_id               = module.vpc.vpc_id
@@ -48,5 +51,6 @@ module "eks" {
   node_max_size        = var.eks_node_max_size
   node_desired_size    = var.eks_node_desired_size
   jenkins_server_sg_id = module.cicd_server.security_group_id
+  deploy_addons = var.deploy_addons
 }
 

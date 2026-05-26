@@ -3,8 +3,9 @@
 # Handles VPC, Border Gateways, and Base Route Table Rules
 # ============================================================
 
+/*
 locals {
-  name_prefix = "${var.project_name}-${var.environment}"
+  name_prefix = "${var.project}-${var.environment}"
 }
 
 # ── VPC ──────────────────────────────────────────────────────
@@ -16,7 +17,7 @@ resource "aws_vpc" "main" {
   tags = {
     Name        = "${local.name_prefix}-vpc"
     Environment = var.environment
-    Project     = var.project_name
+    Project     = var.project
   }
 }
 
@@ -27,7 +28,7 @@ resource "aws_internet_gateway" "main" {
   tags = {
     Name        = "${local.name_prefix}-igw"
     Environment = var.environment
-    Project     = var.project_name
+    Project     = var.project
   }
 }
 
@@ -38,7 +39,7 @@ resource "aws_eip" "nat" {
   tags = {
     Name        = "${local.name_prefix}-nat-eip"
     Environment = var.environment
-    Project     = var.project_name
+    Project     = var.project
   }
 
   depends_on = [aws_internet_gateway.main]
@@ -53,7 +54,7 @@ resource "aws_nat_gateway" "main" {
   tags = {
     Name        = "${local.name_prefix}-nat"
     Environment = var.environment
-    Project     = var.project_name
+    Project     = var.project
   }
 
   depends_on = [aws_internet_gateway.main]
@@ -71,13 +72,13 @@ resource "aws_route_table" "public" {
   tags = {
     Name        = "${local.name_prefix}-public-rt"
     Environment = var.environment
-    Project     = var.project_name
+    Project     = var.project
   }
 }
 
 # ── Route Table: Private ─────────────────────────────────────
 # Allows private subnets to reach the internet via the NAT Gateway
-resource "aws_route_table" "private" {
+resource "aws_route_table" "private" { 
   vpc_id = aws_vpc.main.id
 
   route {
@@ -88,6 +89,51 @@ resource "aws_route_table" "private" {
   tags = {
     Name        = "${local.name_prefix}-private-rt"
     Environment = var.environment
-    Project     = var.project_name
+    Project     = var.project
   }
+}
+
+*/
+
+
+
+# ============================================================
+# Core Network Module (Public-Only Mode)
+# ============================================================
+locals {
+  name_prefix = "${var.project}-${var.environment}"
+}
+
+resource "aws_vpc" "main" {
+  cidr_block           = var.vpc_cidr
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = { Name = "${local.name_prefix}-vpc" }
+}
+
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+  tags   = { Name = "${local.name_prefix}-igw" }
+}
+
+# ── Route Table: Public (All subnets go through IGW) ───────────
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = { Name = "${local.name_prefix}-public-rt" }
+}
+
+# ── Private Route Table ──────────────────────────────────────
+# Note: Since we have no NAT Gateway, this route table 
+# will effectively be for internal-only traffic.
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.main.id
+  # No "0.0.0.0/0" route here because NAT Gateway is disabled
+  tags   = { Name = "${local.name_prefix}-private-rt" }
 }
