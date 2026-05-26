@@ -120,7 +120,7 @@ variable "eks_node_desired_size" {
 # deploy ArgoCD and Prometheus via Helm.
 variable "deploy_addons" {
   type        = bool
-  default     = false
+  default     = true
   description = "Toggle to deploy Helm-based EKS addons (ArgoCD, Prometheus)"
 }
 

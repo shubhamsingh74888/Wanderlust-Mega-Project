@@ -20,32 +20,28 @@ provider "aws" {
   region = var.aws_region
 }
 
-# EKS data sources — only evaluated when deploy_addons=true.
-# On phase-1 apply, no helm/k8s resources exist so these never run.
+# 1. Data sources defined conditionally
 data "aws_eks_cluster" "main" {
-  count = var.deploy_addons ? 1 : 0
+  count = var.deploy_eks && var.deploy_addons ? 1 : 0
   name  = module.eks[0].cluster_name
 }
 
 data "aws_eks_cluster_auth" "main" {
-  count = var.deploy_addons ? 1 : 0
+  count = var.deploy_eks && var.deploy_addons ? 1 : 0
   name  = module.eks[0].cluster_name
 }
 
+# 2. Providers configured to be "noop" if the cluster isn't ready
 provider "kubernetes" {
-  host = var.deploy_addons ? data.aws_eks_cluster.main[0].endpoint : "https://localhost"
-  cluster_ca_certificate = var.deploy_addons ? base64decode(
-    data.aws_eks_cluster.main[0].certificate_authority[0].data
-  ) : ""
-  token = var.deploy_addons ? data.aws_eks_cluster_auth.main[0].token : ""
+  host                   = var.deploy_eks && var.deploy_addons ? data.aws_eks_cluster.main[0].endpoint : "https://localhost"
+  cluster_ca_certificate = var.deploy_eks && var.deploy_addons ? base64decode(data.aws_eks_cluster.main[0].certificate_authority[0].data) : null
+  token                  = var.deploy_eks && var.deploy_addons ? data.aws_eks_cluster_auth.main[0].token : null
 }
 
 provider "helm" {
   kubernetes {
-    host = var.deploy_addons ? data.aws_eks_cluster.main[0].endpoint : "https://localhost"
-    cluster_ca_certificate = var.deploy_addons ? base64decode(
-      data.aws_eks_cluster.main[0].certificate_authority[0].data
-    ) : ""
-    token = var.deploy_addons ? data.aws_eks_cluster_auth.main[0].token : ""
+    host                   = var.deploy_eks && var.deploy_addons ? data.aws_eks_cluster.main[0].endpoint : "https://localhost"
+    cluster_ca_certificate = var.deploy_eks && var.deploy_addons ? base64decode(data.aws_eks_cluster.main[0].certificate_authority[0].data) : null
+    token                  = var.deploy_eks && var.deploy_addons ? data.aws_eks_cluster_auth.main[0].token : null
   }
 }

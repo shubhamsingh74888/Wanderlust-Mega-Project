@@ -28,4 +28,4 @@ eks_node_min_size      = 1
 eks_node_max_size      = 2
 eks_node_desired_size  = 1
 
-deploy_eks = false # or false if you want to stop it
+deploy_eks = true # or false if you want to stop it

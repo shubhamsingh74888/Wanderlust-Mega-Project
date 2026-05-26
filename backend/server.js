@@ -35,3 +35,8 @@ app.listen(port, () => {
 });
 
 export default app;
+
+// Health check endpoint — add before other routes
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
