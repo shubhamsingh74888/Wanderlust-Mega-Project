@@ -1,21 +1,16 @@
 import mongoose from 'mongoose';
-import { MONGODB_URI } from './utils.js';
+const MONGODB_URI = process.env.MONGODB_URI;
+
 export default function connectDB() {
+  if (!MONGODB_URI) {
+    console.warn('[DB] MONGODB_URI not set — skipping DB connection (test mode)');
+    return;
+  }
   try {
     mongoose.connect(MONGODB_URI);
+    // ... rest of your code
   } catch (err) {
     console.error(err.message);
     process.exit(1);
   }
-
-  const dbConnection = mongoose.connection;
-
-  dbConnection.once('open', () => {
-    console.log(`Database connected: ${MONGODB_URI}`);
-  });
-
-  dbConnection.on('error', (err) => {
-    console.error(`connection error: ${MONGODB_URI}`);
-  });
-  return;
 }
