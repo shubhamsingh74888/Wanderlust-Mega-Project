@@ -17,3 +17,8 @@ variable "deploy_addons" {
   description = "Toggle to deploy Helm-based EKS addons"
   default     = false
 }
+
+variable "cluster_name" {
+  type        = string
+  description = "The name of the EKS cluster"
+}

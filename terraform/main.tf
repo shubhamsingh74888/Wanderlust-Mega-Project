@@ -52,5 +52,7 @@ module "eks" {
   node_desired_size    = var.eks_node_desired_size
   jenkins_server_sg_id = module.cicd_server.security_group_id
   deploy_addons = var.deploy_addons
+  
+cluster_name = "${var.project}-${var.environment}-eks"
 }
 
