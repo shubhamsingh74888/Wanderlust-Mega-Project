@@ -1,3 +1,5 @@
+/*
+
 pipeline {
   agent any
 
@@ -85,6 +87,118 @@ pipeline {
 
     stage('05 · Scale · Ensure 2 nodes') {
       when { branch 'main' }
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'aws-creds', 
+                         usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                         passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+          sh '''
+            aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_DEFAULT_REGION 2>/dev/null || true
+            NODEGROUP=$(aws eks list-nodegroups --cluster-name $CLUSTER_NAME --region $AWS_DEFAULT_REGION --query 'nodegroups[0]' --output text 2>/dev/null || echo "")
+
+            if [ -n "$NODEGROUP" ]; then
+              aws eks update-nodegroup-config --cluster-name $CLUSTER_NAME --nodegroup-name $NODEGROUP --scaling-config minSize=1,maxSize=3,desiredSize=2 --region $AWS_DEFAULT_REGION 2>/dev/null || true
+              kubectl wait --for=condition=Ready nodes --all --timeout=300s || true
+            fi
+            echo "[SCALE] ✔ Done"
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    success { echo "✅ Infra pipeline PASSED" }
+    failure { echo "❌ Infra pipeline FAILED" }
+  }
+}
+
+*/
+
+
+
+pipeline {
+  agent any
+
+  tools {
+    // This looks for the Terraform installation you configured in Jenkins Tools
+    terraform 'terraform-latest'
+  }
+
+  environment {
+    AWS_DEFAULT_REGION = 'ap-south-1'
+    CLUSTER_NAME       = 'wanderlust-prod-eks'
+  }
+
+  options {
+    buildDiscarder(logRotator(numToKeepStr: '5'))
+    timestamps()
+    timeout(time: 30, unit: 'MINUTES')
+    disableConcurrentBuilds()
+  }
+
+  stages {
+    stage('01 · Terraform · Init') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'aws-creds', 
+                         usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                         passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+          dir('terraform') {
+            sh 'terraform init -backend-config=backend-configs/prod.hcl -reconfigure'
+          }
+        }
+      }
+    }
+
+    stage('02 · Terraform · Plan') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'aws-creds', 
+                         usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                         passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+          dir('terraform') {
+            sh '''
+              terraform plan \
+                -var-file="env/prod.tfvars" \
+                -out=tfplan \
+                -detailed-exitcode || true
+            '''
+          }
+        }
+      }
+    }
+
+    stage('03 · Terraform · Apply') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'aws-creds', 
+                         usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                         passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+          dir('terraform') {
+            sh 'terraform apply -auto-approve tfplan'
+          }
+        }
+      }
+    }
+
+    stage('04 · Bootstrap · ArgoCD + CSI') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'aws-creds', 
+                         usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                         passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+          sh '''
+            STATUS=$(aws eks describe-cluster --name $CLUSTER_NAME --region $AWS_DEFAULT_REGION --query 'cluster.status' --output text 2>/dev/null || echo "NOT_FOUND")
+            echo "[BOOTSTRAP] Cluster status: $STATUS"
+
+            if [ "$STATUS" = "ACTIVE" ]; then
+              chmod +x bootstrap-gitops.sh
+              ./bootstrap-gitops.sh
+            else
+              echo "[BOOTSTRAP] Cluster not active — skipping bootstrap"
+            fi
+          '''
+        }
+      }
+    }
+
+    stage('05 · Scale · Ensure 2 nodes') {
       steps {
         withCredentials([usernamePassword(credentialsId: 'aws-creds', 
                          usernameVariable: 'AWS_ACCESS_KEY_ID', 
