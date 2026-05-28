@@ -1,3 +1,5 @@
+
+/*
 # ============================================================
 #  terraform/modules/eks/addons.tf
 #  Helm releases for ArgoCD and Prometheus/Grafana
@@ -59,6 +61,52 @@ resource "helm_release" "prometheus" {
   set {
     name  = "grafana.adminPassword"
     value = "WanderlustGrafana2024!"
+  }
+}
+
+
+*/
+
+
+
+# ============================================================
+#  terraform/modules/eks/addons.tf
+#  Helm releases managed by Terraform.
+#
+#  ARCHITECTURE DECISION:
+#  Prometheus (kube-prometheus-stack) has been REMOVED from here.
+#  Terraform is for infrastructure (EKS, VPC, IAM, ArgoCD bootstrap).
+#  Application workloads like Prometheus belong in ArgoCD GitOps.
+#
+#  Prometheus is now deployed via:
+#  kubernetes/argocd-apps/prometheus.yaml  ← ArgoCD Application manifest
+#  ArgoCD will install it automatically after Stage 04 runs.
+# ============================================================
+
+resource "helm_release" "argocd" {
+  count = var.deploy_addons ? 1 : 0
+
+  name             = "argocd"
+  repository       = "https://argoproj.github.io/argo-helm"
+  chart            = "argo-cd"
+  version          = "7.4.5"
+  namespace        = "argocd"
+  create_namespace = true
+
+  # ArgoCD itself is lightweight — 600s is generous enough.
+  timeout         = 600
+  wait            = true
+  atomic          = false
+  cleanup_on_fail = false
+
+  set {
+    name  = "server.service.type"
+    value = "LoadBalancer"
+  }
+
+  set {
+    name  = "server.extraArgs[0]"
+    value = "--insecure"
   }
 }
 

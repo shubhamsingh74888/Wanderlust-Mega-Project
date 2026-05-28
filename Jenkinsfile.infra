@@ -2,14 +2,16 @@
 //  Jenkinsfile.infra
 //  Infrastructure Pipeline — Terraform + ArgoCD Bootstrap
 //
-//  FIXES APPLIED:
-//  1. Removed all `when { branch 'main' }` — Jenkins runs in
-//     detached HEAD so branch check always fails silently.
-//  2. Prometheus timeout raised to 600s (was 300s = context deadline exceeded).
-//  3. Added terraform state rm for Helm releases before destroy plan,
-//     so kubectl errors don't block Terraform.
-//  4. Added --disableRetireJS to dependency check (see pipelineSecurity.groovy).
-//  5. EBS volume protected via lifecycle prevent_destroy (see note below).
+//  ARCHITECTURE:
+//  Terraform  → deploys EKS, VPC, IAM, ArgoCD (infrastructure only)
+//  ArgoCD     → deploys Prometheus/Grafana (application workloads)
+//
+//  CHANGES FROM PREVIOUS VERSION:
+//  1. Stage 03 (Terraform Apply) now removes Prometheus helm state
+//     BEFORE applying, so the tainted resource doesn't loop forever.
+//  2. Stage 04 (Bootstrap) applies kubernetes/argocd-apps/prometheus.yaml
+//     via bootstrap-gitops.sh — ArgoCD takes over from there.
+//  3. Prometheus is fully removed from Terraform (addons.tf updated).
 // ============================================================
 
 pipeline {
@@ -17,8 +19,6 @@ pipeline {
   agent any
 
   tools {
-    // Must match the name in: Manage Jenkins → Tools → Terraform installations
-    // See Section 3 below for how to configure this.
     terraform 'terraform-latest'
   }
 
@@ -52,8 +52,6 @@ pipeline {
     }
 
     // ── Stage 02 · Terraform Plan ───────────────────────────
-    // Uses -detailed-exitcode so exit code 2 (changes exist) doesn't
-    // fail the pipeline. The `|| true` swallows that exit code safely.
     stage('02 · Terraform · Plan') {
       steps {
         withCredentials([usernamePassword(
@@ -74,9 +72,14 @@ pipeline {
     }
 
     // ── Stage 03 · Terraform Apply ──────────────────────────
-    // Applies the saved plan from Stage 02.
-    // NOTE: when { branch 'main' } REMOVED — Jenkins runs in detached HEAD
-    // which means env.BRANCH_NAME is null and the condition always fails.
+    //
+    // KEY FIX: Before applying, we remove the tainted/failed Prometheus
+    // helm_release from Terraform state. This is safe because we are
+    // intentionally moving Prometheus out of Terraform and into ArgoCD.
+    //
+    // After state rm, Terraform will no longer try to manage Prometheus.
+    // The `|| true` means: if the resource isn't in state (clean run),
+    // don't fail the pipeline.
     stage('03 · Terraform · Apply') {
       steps {
         withCredentials([usernamePassword(
@@ -85,15 +88,27 @@ pipeline {
           passwordVariable: 'AWS_SECRET_ACCESS_KEY'
         )]) {
           dir('terraform') {
-            sh 'terraform apply -auto-approve tfplan'
+            sh '''
+              echo "[APPLY] Removing Prometheus from Terraform state (moving to ArgoCD)..."
+              terraform state rm 'module.eks[0].helm_release.prometheus[0]' || true
+
+              echo "[APPLY] Removing monitoring namespace if it exists (clean slate for ArgoCD)..."
+              kubectl delete namespace monitoring --force --grace-period=0 2>/dev/null || true
+
+              echo "[APPLY] Running terraform apply..."
+              terraform apply -auto-approve tfplan
+            '''
           }
         }
       }
     }
 
-    // ── Stage 04 · Bootstrap ArgoCD ─────────────────────────
-    // Only runs bootstrap if cluster is ACTIVE.
-    // Skips silently if cluster isn't ready (e.g. first run, still creating).
+    // ── Stage 04 · Bootstrap ArgoCD + Apply App Manifests ──
+    //
+    // bootstrap-gitops.sh will:
+    //   1. Wait for ArgoCD to be Ready
+    //   2. Apply kubernetes/argocd-apps/prometheus.yaml
+    //   3. ArgoCD then deploys Prometheus in the background (no timeout risk)
     stage('04 · Bootstrap · ArgoCD + CSI') {
       steps {
         withCredentials([usernamePassword(
@@ -111,7 +126,6 @@ pipeline {
             echo "[BOOTSTRAP] Cluster status: $STATUS"
 
             if [ "$STATUS" = "ACTIVE" ]; then
-              # Update kubeconfig so kubectl talks to EKS, NOT to Jenkins localhost
               aws eks update-kubeconfig \
                 --name $CLUSTER_NAME \
                 --region $AWS_DEFAULT_REGION
