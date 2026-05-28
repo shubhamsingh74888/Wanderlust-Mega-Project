@@ -40,6 +40,14 @@ systemctl enable jenkins docker
 usermod -aG docker ubuntu
 usermod -aG docker jenkins
 
+
+# Install Terraform
+TERRAFORM_VERSION="1.9.8"
+curl -fsSL "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" -o /tmp/terraform.zip
+unzip /tmp/terraform.zip -d /usr/local/bin/
+chmod +x /usr/local/bin/terraform
+terraform version
+
 # 4. kubectl
 curl -fsSL "https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl" -o /tmp/kubectl
 install -o root -g root -m 0755 /tmp/kubectl /usr/local/bin/kubectl
@@ -66,7 +74,7 @@ unzip -q awscliv2.zip
 ./aws/install --update
 rm -rf awscliv2.zip aws/
 
-# 9. Node.js 21
+# 9 Node.js 21
 curl -fsSL https://deb.nodesource.com/setup_21.x | bash -
 apt-get install -y nodejs
 
