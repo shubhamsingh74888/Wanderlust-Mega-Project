@@ -16,7 +16,7 @@ availability_zones   = ["ap-south-1a", "ap-south-1b"]
 
 # ── CI/CD Infrastructure Layer (Jenkins / SonarQube) ──────────
 jenkins_instance_type    = "t3.large"
-jenkins_ami_id           = "ami-00023f2eed59ab4b9"
+jenkins_ami_id           = "ami-02d272fa43bc32f8d"
 jenkins_volume_size      = 30
 jenkins_data_volume_size = 30
 backup_s3_bucket         = "my-s3-bucket-shubham-prod"
