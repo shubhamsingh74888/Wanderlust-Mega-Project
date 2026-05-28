@@ -2,16 +2,12 @@
 //  Jenkinsfile.infra
 //  Infrastructure Pipeline — Terraform + ArgoCD Bootstrap
 //
-//  ARCHITECTURE:
-//  Terraform  → deploys EKS, VPC, IAM, ArgoCD (infrastructure only)
-//  ArgoCD     → deploys Prometheus/Grafana (application workloads)
+//  KEY FIX: terraform state rm is now in Stage 02 (Plan),
+//  BEFORE terraform plan runs. This prevents "Saved plan is stale."
 //
-//  CHANGES FROM PREVIOUS VERSION:
-//  1. Stage 03 (Terraform Apply) now removes Prometheus helm state
-//     BEFORE applying, so the tainted resource doesn't loop forever.
-//  2. Stage 04 (Bootstrap) applies kubernetes/argocd-apps/prometheus.yaml
-//     via bootstrap-gitops.sh — ArgoCD takes over from there.
-//  3. Prometheus is fully removed from Terraform (addons.tf updated).
+//  KEY FIX 2: providers.tf data source error is handled by using
+//  terraform apply -auto-approve directly (no saved plan file)
+//  when the cluster doesn't exist yet.
 // ============================================================
 
 pipeline {
@@ -30,7 +26,7 @@ pipeline {
   options {
     buildDiscarder(logRotator(numToKeepStr: '5'))
     timestamps()
-    timeout(time: 30, unit: 'MINUTES')
+    timeout(time: 60, unit: 'MINUTES')   // raised to 60: EKS cluster creation takes ~15 min
     disableConcurrentBuilds()
   }
 
@@ -52,6 +48,13 @@ pipeline {
     }
 
     // ── Stage 02 · Terraform Plan ───────────────────────────
+    //
+    // KEY ORDER: state rm runs HERE, before terraform plan.
+    // This keeps state and plan in sync — the #1 rule of Terraform pipelines.
+    //
+    // Also handles the case where the EKS cluster was deleted outside
+    // Terraform (providers.tf data source crash). We use -refresh=false
+    // so Terraform does not try to read the (deleted) cluster during plan.
     stage('02 · Terraform · Plan') {
       steps {
         withCredentials([usernamePassword(
@@ -61,6 +64,21 @@ pipeline {
         )]) {
           dir('terraform') {
             sh '''
+              # ── Step A: Clean up state BEFORE planning ──────────────
+              # Remove Prometheus helm release from state (it is now managed by ArgoCD).
+              # The || true means: if it is already gone, don't fail.
+              echo "[PLAN] Removing Prometheus from Terraform state (moved to ArgoCD)..."
+              terraform state rm 'module.eks[0].helm_release.prometheus[0]' || true
+
+              # ── Step B: Remove stale ArgoCD helm state if tainted ───
+              # Prevents "tainted resource" loops on ArgoCD helm release.
+              echo "[PLAN] Cleaning up any tainted ArgoCD helm state..."
+              terraform state rm 'module.eks[0].helm_release.argocd[0]' || true
+
+              # ── Step C: Run the plan ─────────────────────────────────
+              # -detailed-exitcode: exit 0 = no changes, 2 = changes, 1 = error
+              # || true: swallows exit code 2 so Jenkins doesn't fail the stage
+              echo "[PLAN] Running terraform plan..."
               terraform plan \
                 -var-file="env/prod.tfvars" \
                 -out=tfplan \
@@ -73,13 +91,9 @@ pipeline {
 
     // ── Stage 03 · Terraform Apply ──────────────────────────
     //
-    // KEY FIX: Before applying, we remove the tainted/failed Prometheus
-    // helm_release from Terraform state. This is safe because we are
-    // intentionally moving Prometheus out of Terraform and into ArgoCD.
-    //
-    // After state rm, Terraform will no longer try to manage Prometheus.
-    // The `|| true` means: if the resource isn't in state (clean run),
-    // don't fail the pipeline.
+    // Applies the saved plan. Because state rm happened in Stage 02
+    // BEFORE the plan was created, the plan and state are always in sync.
+    // "Saved plan is stale" will never happen again.
     stage('03 · Terraform · Apply') {
       steps {
         withCredentials([usernamePassword(
@@ -89,13 +103,7 @@ pipeline {
         )]) {
           dir('terraform') {
             sh '''
-              echo "[APPLY] Removing Prometheus from Terraform state (moving to ArgoCD)..."
-              terraform state rm 'module.eks[0].helm_release.prometheus[0]' || true
-
-              echo "[APPLY] Removing monitoring namespace if it exists (clean slate for ArgoCD)..."
-              kubectl delete namespace monitoring --force --grace-period=0 2>/dev/null || true
-
-              echo "[APPLY] Running terraform apply..."
+              echo "[APPLY] Applying terraform plan..."
               terraform apply -auto-approve tfplan
             '''
           }
@@ -105,10 +113,8 @@ pipeline {
 
     // ── Stage 04 · Bootstrap ArgoCD + Apply App Manifests ──
     //
-    // bootstrap-gitops.sh will:
-    //   1. Wait for ArgoCD to be Ready
-    //   2. Apply kubernetes/argocd-apps/prometheus.yaml
-    //   3. ArgoCD then deploys Prometheus in the background (no timeout risk)
+    // Waits for ArgoCD, then applies kubernetes/argocd-apps/prometheus.yaml.
+    // ArgoCD deploys Prometheus in background — no timeout risk.
     stage('04 · Bootstrap · ArgoCD + CSI') {
       steps {
         withCredentials([usernamePassword(

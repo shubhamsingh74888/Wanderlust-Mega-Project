@@ -1,6 +1,5 @@
 # ============================================================
-# Root Module — Wanderlust Infrastructure
-# Deploy order: VPC → CI/CD Server → EKS → Addons
+#  terraform/main.tf
 # ============================================================
 
 # ── Step 1: Build the Network ────────────────────────────────
@@ -19,26 +18,30 @@ module "vpc" {
 module "cicd_server" {
   source = "./modules/cicd-server"
 
-  project          = var.project
-  environment      = var.environment
-  aws_region       = var.aws_region
-  vpc_id           = module.vpc.vpc_id
-  subnet_id        = module.vpc.public_subnet_ids[0]
-  instance_type    = var.jenkins_instance_type
-  ami_id           = var.jenkins_ami_id
-  root_volume_size = var.jenkins_volume_size
-  data_volume_size = var.jenkins_data_volume_size
-  backup_s3_bucket = var.backup_s3_bucket
-  deploy_addons    = var.deploy_addons
-  availability_zone = var.availability_zones[0]    # Mapping from your VPC AZs
-  ebs_volume_size   = var.jenkins_data_volume_size # Mapping to your existing volume var
+  project           = var.project
+  environment       = var.environment
+  aws_region        = var.aws_region
+  vpc_id            = module.vpc.vpc_id
+  subnet_id         = module.vpc.public_subnet_ids[0]
+  instance_type     = var.jenkins_instance_type
+  ami_id            = var.jenkins_ami_id
+  root_volume_size  = var.jenkins_volume_size
+  data_volume_size  = var.jenkins_data_volume_size
+  backup_s3_bucket  = var.backup_s3_bucket
+  deploy_addons     = var.deploy_addons
+  availability_zone = var.availability_zones[0]
+  ebs_volume_size   = var.jenkins_data_volume_size
   key_name          = var.key_name
 }
 
 # ── Step 3: Build the EKS Cluster ────────────────────────────
+# NOTE: jenkins_role_arn is NOT passed here.
+# access_entries.tf inside the module hardcodes it via
+# data.aws_caller_identity — no variable needed.
 module "eks" {
   source = "./modules/eks"
-  count         = var.deploy_eks ? 1 : 0
+  count  = var.deploy_eks ? 1 : 0
+
   project              = var.project
   environment          = var.environment
   aws_region           = var.aws_region
@@ -51,8 +54,38 @@ module "eks" {
   node_max_size        = var.eks_node_max_size
   node_desired_size    = var.eks_node_desired_size
   jenkins_server_sg_id = module.cicd_server.security_group_id
-  deploy_addons = var.deploy_addons
-  
-cluster_name = "${var.project}-${var.environment}-eks"
+  deploy_addons        = var.deploy_addons
+  cluster_name         = "${var.project}-${var.environment}-eks"
+}
+
+# ── Step 4: Install ArgoCD via Helm ──────────────────────────
+# Lives at root level (NOT inside modules/eks) to break provider cycle.
+# depends_on ensures cluster is fully ready before Helm connects.
+resource "helm_release" "argocd" {
+  count = var.deploy_eks && var.deploy_addons ? 1 : 0
+
+  name             = "argocd"
+  repository       = "https://argoproj.github.io/argo-helm"
+  chart            = "argo-cd"
+  version          = "7.4.5"
+  namespace        = "argocd"
+  create_namespace = true
+
+  timeout         = 600
+  wait            = true
+  atomic          = false
+  cleanup_on_fail = false
+
+  set {
+    name  = "server.service.type"
+    value = "LoadBalancer"
+  }
+
+  set {
+    name  = "server.extraArgs[0]"
+    value = "--insecure"
+  }
+
+  depends_on = [module.eks]
 }
 

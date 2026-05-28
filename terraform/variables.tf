@@ -116,8 +116,6 @@ variable "eks_node_desired_size" {
 }
 
 # ── Addon Deployment Toggle ────────────────────────────────────
-# Keep false until EKS cluster is fully up, then set true to
-# deploy ArgoCD and Prometheus via Helm.
 variable "deploy_addons" {
   type        = bool
   default     = true
@@ -126,7 +124,7 @@ variable "deploy_addons" {
 
 variable "deploy_eks" {
   type        = bool
-  default     = true # Set to false to disable EKS entirely
+  default     = true
   description = "Toggle to enable or disable EKS cluster deployment"
 }
 
@@ -138,3 +136,4 @@ variable "allowed_cidr_blocks" {
   type    = list(string)
   default = ["0.0.0.0/0"]
 }
+
