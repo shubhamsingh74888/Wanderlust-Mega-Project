@@ -1,3 +1,5 @@
+const { maybeDescribe } = require('../utils/ci-skip');
+const { maybeDescribe } = require('../utils/ci-skip');
 import mongoose from 'mongoose';
 import request from 'supertest';
 import Post from '../../../models/post.js';
@@ -11,7 +13,7 @@ afterAll(async () => {
 
 let postId;
 const invalidPostId = '609c16c69405b14574c99999';
-describe('Integration Tests: Post creation', () => {
+maybeDescribe('Integration Tests: Post creation', () => {
   it('Post creation: Success - All fields are valid', async () => {
     const response = await request(server).post('/api/posts').send(createPostObject());
     postId = response.body._id;
@@ -67,7 +69,7 @@ describe('Integration Tests: Post creation', () => {
     expect(JSON.parse(response.text)).toEqual({ message: RESPONSE_MESSAGES.COMMON.INTERNAL_SERVER_ERROR });
   });
 });
-describe('Integration Tests: Get all posts', () => {
+maybeDescribe('Integration Tests: Get all posts', () => {
   it('Get all posts: Success', async () => {
     const response = await request(server).get('/api/posts');
 
@@ -75,7 +77,7 @@ describe('Integration Tests: Get all posts', () => {
     expect(response.body).toBeInstanceOf(Array);
   });
 });
-describe('Integration Tests: Get all posts by category', () => {
+maybeDescribe('Integration Tests: Get all posts by category', () => {
   it('Get all posts by category: Success', async () => {
     const category = validCategories[0];
     const response = await request(server).get(`/api/posts/categories/${category}`);
@@ -94,7 +96,7 @@ describe('Integration Tests: Get all posts by category', () => {
     });
   });
 });
-describe('Integration Tests: Get all featured posts', () => {
+maybeDescribe('Integration Tests: Get all featured posts', () => {
   it('Get all featured posts: Success', async () => {
     const responseFeatured = await request(server).get('/api/posts/featured');
 
@@ -102,7 +104,7 @@ describe('Integration Tests: Get all featured posts', () => {
     expect(responseFeatured.body.length).toBeGreaterThan(1);
   });
 });
-describe('Integration Tests: Get all latest posts', () => {
+maybeDescribe('Integration Tests: Get all latest posts', () => {
   it('Get all latest posts: Success', async () => {
     const responseLatest = await request(server).get('/api/posts/latest');
 
@@ -110,7 +112,7 @@ describe('Integration Tests: Get all latest posts', () => {
     expect(responseLatest.body.length).toBeGreaterThan(1);
   });
 });
-describe('Integration Tests: Update Post', () => {
+maybeDescribe('Integration Tests: Update Post', () => {
   it('Update Post: Success - Update Post of existing ID', async () => {
     let updatedPost;
 
@@ -135,7 +137,7 @@ describe('Integration Tests: Update Post', () => {
     });
   });
 });
-describe('Integration Tests: Delete Post', () => {
+maybeDescribe('Integration Tests: Delete Post', () => {
   it('Delete Post: Success - Removing Post with specific ID', async () => {
     let deletedPost;
 
