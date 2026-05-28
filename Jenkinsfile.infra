@@ -1,6 +1,11 @@
 pipeline {
   agent any
 
+  // 1. This uses the 'terraform-latest' tool you configured in Jenkins
+  tools {
+    terraform 'terraform-latest'
+  }
+
   environment {
     AWS_DEFAULT_REGION = 'ap-south-1'
     CLUSTER_NAME       = 'wanderlust-prod-eks'
@@ -14,24 +19,32 @@ pipeline {
   }
 
   stages {
-
     stage('01 · Terraform · Init') {
       steps {
-        dir('terraform') {
-          sh 'terraform init -backend-config=backend-configs/prod.hcl -reconfigure'
+        // 2. Inject AWS Credentials for all Terraform stages
+        withCredentials([usernamePassword(credentialsId: 'aws-creds', 
+                         usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                         passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+          dir('terraform') {
+            sh 'terraform init -backend-config=backend-configs/prod.hcl -reconfigure'
+          }
         }
       }
     }
 
     stage('02 · Terraform · Plan') {
       steps {
-        dir('terraform') {
-          sh '''
-            terraform plan \
-              -var-file="env/prod.tfvars" \
-              -out=tfplan \
-              -detailed-exitcode || true
-          '''
+        withCredentials([usernamePassword(credentialsId: 'aws-creds', 
+                         usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                         passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+          dir('terraform') {
+            sh '''
+              terraform plan \
+                -var-file="env/prod.tfvars" \
+                -out=tfplan \
+                -detailed-exitcode || true
+            '''
+          }
         }
       }
     }
@@ -39,12 +52,12 @@ pipeline {
     stage('03 · Terraform · Apply') {
       when { branch 'main' }
       steps {
-        dir('terraform') {
-          sh '''
-            terraform apply \
-              -var-file="env/prod.tfvars" \
-              -auto-approve
-          '''
+        withCredentials([usernamePassword(credentialsId: 'aws-creds', 
+                         usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                         passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+          dir('terraform') {
+            sh 'terraform apply -auto-approve tfplan'
+          }
         }
       }
     }
@@ -52,55 +65,43 @@ pipeline {
     stage('04 · Bootstrap · ArgoCD + CSI') {
       when { branch 'main' }
       steps {
-        sh '''
-          STATUS=$(aws eks describe-cluster \
-            --name $CLUSTER_NAME \
-            --region $AWS_DEFAULT_REGION \
-            --query 'cluster.status' \
-            --output text 2>/dev/null || echo "NOT_FOUND")
+        withCredentials([usernamePassword(credentialsId: 'aws-creds', 
+                         usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                         passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+          sh '''
+            STATUS=$(aws eks describe-cluster --name $CLUSTER_NAME --region $AWS_DEFAULT_REGION --query 'cluster.status' --output text 2>/dev/null || echo "NOT_FOUND")
+            echo "[BOOTSTRAP] Cluster status: $STATUS"
 
-          echo "[BOOTSTRAP] Cluster status: $STATUS"
-
-          if [ "$STATUS" = "ACTIVE" ]; then
-            chmod +x bootstrap-gitops.sh
-            ./bootstrap-gitops.sh
-          else
-            echo "[BOOTSTRAP] Cluster not active — skipping bootstrap"
-          fi
-        '''
+            if [ "$STATUS" = "ACTIVE" ]; then
+              chmod +x bootstrap-gitops.sh
+              ./bootstrap-gitops.sh
+            else
+              echo "[BOOTSTRAP] Cluster not active — skipping bootstrap"
+            fi
+          '''
+        }
       }
     }
 
     stage('05 · Scale · Ensure 2 nodes') {
       when { branch 'main' }
       steps {
-        sh '''
-          aws eks update-kubeconfig \
-            --name $CLUSTER_NAME \
-            --region $AWS_DEFAULT_REGION 2>/dev/null || true
+        withCredentials([usernamePassword(credentialsId: 'aws-creds', 
+                         usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                         passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+          sh '''
+            aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_DEFAULT_REGION 2>/dev/null || true
+            NODEGROUP=$(aws eks list-nodegroups --cluster-name $CLUSTER_NAME --region $AWS_DEFAULT_REGION --query 'nodegroups[0]' --output text 2>/dev/null || echo "")
 
-          NODEGROUP=$(aws eks list-nodegroups \
-            --cluster-name $CLUSTER_NAME \
-            --region $AWS_DEFAULT_REGION \
-            --query 'nodegroups[0]' --output text 2>/dev/null || echo "")
-
-          if [ -n "$NODEGROUP" ]; then
-            aws eks update-nodegroup-config \
-              --cluster-name $CLUSTER_NAME \
-              --nodegroup-name $NODEGROUP \
-              --scaling-config minSize=1,maxSize=3,desiredSize=2 \
-              --region $AWS_DEFAULT_REGION 2>/dev/null || true
-
-            kubectl wait --for=condition=Ready nodes \
-              --all --timeout=300s || true
-          fi
-
-          kubectl get nodes 2>/dev/null || echo "Cluster not yet accessible"
-          echo "[SCALE] ✔ Done"
-        '''
+            if [ -n "$NODEGROUP" ]; then
+              aws eks update-nodegroup-config --cluster-name $CLUSTER_NAME --nodegroup-name $NODEGROUP --scaling-config minSize=1,maxSize=3,desiredSize=2 --region $AWS_DEFAULT_REGION 2>/dev/null || true
+              kubectl wait --for=condition=Ready nodes --all --timeout=300s || true
+            fi
+            echo "[SCALE] ✔ Done"
+          '''
+        }
       }
     }
-
   }
 
   post {
