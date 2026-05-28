@@ -11,6 +11,8 @@ resource "helm_release" "argocd" {
   chart            = "argo-cd"
   namespace        = "argocd"
   create_namespace = true
+  timeout = 600 # Increase to 10 minutes (600 seconds)
+  wait    = true
   version          = "7.4.5" # Pinning version for stability
 
   set {
