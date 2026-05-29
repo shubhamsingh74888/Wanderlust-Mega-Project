@@ -63,6 +63,7 @@ pipeline {
           passwordVariable: 'AWS_SECRET_ACCESS_KEY'
         )]) {
           dir('terraform') {
+	    sh 'rm -f tfplan'
             sh '''
               # ── Step A: Clean up state BEFORE planning ──────────────
               # Remove Prometheus helm release from state (it is now managed by ArgoCD).
