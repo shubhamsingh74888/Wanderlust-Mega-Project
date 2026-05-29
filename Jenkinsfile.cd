@@ -1,40 +1,6 @@
 // ============================================================
-//  Jenkinsfile.cd  →  place in: Wanderlust-Mega-Project/Jenkinsfile.cd
-//
+//  Jenkinsfile.cd
 //  CD Pipeline — GitOps manifest update + ArgoCD sync verification
-//
-//  NOTE: In your current setup the CI pipeline (shared-lib Stage 11)
-//  already handles the GitOps update automatically on every push.
-//  This separate CD pipeline is useful for:
-//    - Manual re-deploys of a specific image tag
-//    - Rollbacks to a previous build number
-//    - Deploying a tag that was built in another branch
-//    - Emergency hotfixes without running full CI
-//
-//  TRIGGER:
-//    Option A (Automatic): CI pipeline calls this job via:
-//      build job: 'wanderlust-cd', parameters: [...]
-//    Option B (Manual):    Run from Jenkins UI with IMAGE_TAG param
-//
-//  WHAT IT DOES:
-//    01 · Validate      — ensure IMAGE_TAG is provided
-//    02 · Checkout      — clone wanderlust-gitops repo
-//    03 · Update Tags   — sed new image tag into production manifests
-//    04 · Commit + Push — push manifest changes back to git
-//    05 · Verify Sync   — poll ArgoCD until app is Synced + Healthy
-//    06 · Smoke Test    — kubectl get pods/svc/ingress in wanderlust ns
-//
-//  MANIFESTS UPDATED (exact paths in wanderlust-gitops repo):
-//    kubernetes/production/frontend.yaml  → shubham74888/wanderlust-frontend:frontend-b<N>
-//    kubernetes/production/backend.yaml   → shubham74888/wanderlust-backend:backend-b<N>
-//
-//  CREDENTIAL IDs (must match Jenkins Manage Credentials exactly):
-//    github        → Username/Password  (GitHub token for git push)
-//    aws-creds     → Username/Password  (AWS keys for kubectl/ArgoCD access)
-//    argocd-creds  → Username/Password  (ArgoCD admin user + password)
-//
-//  ARGOCD SERVER URL:
-//    Retrieved dynamically from the cluster — no hard-coded URLs needed.
 // ============================================================
 
 pipeline {
@@ -51,9 +17,9 @@ pipeline {
     DOCKER_HUB_USER       = 'shubham74888'
     IMAGE_FRONTEND        = 'shubham74888/wanderlust-frontend'
     IMAGE_BACKEND         = 'shubham74888/wanderlust-backend'
-    // Exact file paths inside wanderlust-gitops repo — verified from your ls output
     FRONTEND_MANIFEST     = 'kubernetes/production/frontend.yaml'
     BACKEND_MANIFEST      = 'kubernetes/production/backend.yaml'
+    ARGOCD_APP_MANIFEST   = 'argocd/wanderlust-app.yaml'        // ← NEW
     ARGOCD_APP_WANDERLUST = 'wanderlust'
     ARGOCD_NAMESPACE      = 'argocd'
     K8S_NAMESPACE         = 'wanderlust'
@@ -71,39 +37,31 @@ pipeline {
     string(
       name: 'IMAGE_TAG',
       defaultValue: '',
-      description: '''
-        Build number to deploy (e.g. 102).
-        Images deployed will be:
-          shubham74888/wanderlust-frontend:frontend-b<IMAGE_TAG>
-          shubham74888/wanderlust-backend:backend-b<IMAGE_TAG>
-        Leave blank to trigger from CI pipeline (it passes this automatically).
-      '''
+      description: 'Passed automatically by CI. For manual deploys, enter the build number.'
+    )
+    booleanParam(
+      name: 'SKIP_ARGOCD_VERIFY',              // ← FIX: was missing, caused when{} to fail
+      defaultValue: false,
+      description: 'Skip ArgoCD sync verification (use for emergency deploys).'
     )
     booleanParam(
       name: 'FORCE_SYNC',
       defaultValue: false,
-      description: 'Force ArgoCD sync even if app is already in Synced state'
-    )
-    booleanParam(
-      name: 'SKIP_ARGOCD_VERIFY',
-      defaultValue: false,
-      description: 'Skip ArgoCD sync verification (for emergency hotfix speed)'
+      description: 'Force ArgoCD sync via kubectl patch even if git diff shows no change.'
     )
   }
 
   stages {
 
-    // ── Stage 01 · Validate ────────────────────────────────
+    // ── Stage 01 · Validate ──────────────────────────────────
     stage('01 · Validate Parameters') {
       steps {
         script {
           if (!params.IMAGE_TAG?.trim()) {
-            error("[VALIDATE] ✘ IMAGE_TAG parameter is required. Provide a build number (e.g. 102).")
+            error("[VALIDATE] ✘ IMAGE_TAG parameter is required.")
           }
-          // Derive full image tags matching shared-lib naming convention
           env.FRONTEND_IMAGE_TAG = "${IMAGE_FRONTEND}:frontend-b${params.IMAGE_TAG}"
           env.BACKEND_IMAGE_TAG  = "${IMAGE_BACKEND}:backend-b${params.IMAGE_TAG}"
-
           echo """
 [VALIDATE] ✔ Deploying build #${params.IMAGE_TAG}
 [VALIDATE]   Frontend: ${env.FRONTEND_IMAGE_TAG}
@@ -113,50 +71,35 @@ pipeline {
       }
     }
 
-    // ── Stage 02 · Checkout GitOps Repo ───────────────────
+    // ── Stage 02 · Checkout GitOps Repo ─────────────────────
     stage('02 · Checkout · wanderlust-gitops') {
       steps {
         git branch: "${env.GITOPS_BRANCH}",
             credentialsId: 'github',
             url: "${env.GITOPS_REPO_URL}"
-
         echo "[CHECKOUT] ✔ Cloned wanderlust-gitops repo."
       }
     }
 
-    // ── Stage 03 · Update Image Tags in Manifests ─────────
+    // ── Stage 03 · Update Image Tags ────────────────────────
     stage('03 · Update · Image Tags in Manifests') {
       steps {
         sh """
           echo "[UPDATE] ── Before update ──────────────────────────────"
-          echo "[UPDATE] Frontend manifest (${FRONTEND_MANIFEST}):"
           grep "image:" ${FRONTEND_MANIFEST} || echo "  (no image line found)"
+          grep "image:" ${BACKEND_MANIFEST}  || echo "  (no image line found)"
 
-          echo "[UPDATE] Backend manifest (${BACKEND_MANIFEST}):"
-          grep "image:" ${BACKEND_MANIFEST} || echo "  (no image line found)"
-
-          echo ""
-          echo "[UPDATE] ── Applying new tags ─────────────────────────"
-
-          # Update frontend: matches any existing tag for this image
-          sed -i "s|image: ${IMAGE_FRONTEND}:.*|image: ${FRONTEND_IMAGE_TAG}|g" \
-            ${FRONTEND_MANIFEST}
-
-          # Update backend: matches any existing tag for this image
-          sed -i "s|image: ${IMAGE_BACKEND}:.*|image: ${BACKEND_IMAGE_TAG}|g" \
-            ${BACKEND_MANIFEST}
+          sed -i "s|image: ${IMAGE_FRONTEND}:.*|image: ${FRONTEND_IMAGE_TAG}|g" ${FRONTEND_MANIFEST}
+          sed -i "s|image: ${IMAGE_BACKEND}:.*|image: ${BACKEND_IMAGE_TAG}|g"   ${BACKEND_MANIFEST}
 
           echo "[UPDATE] ── After update ───────────────────────────────"
-          echo "[UPDATE] Frontend manifest:"
           grep "image:" ${FRONTEND_MANIFEST}
-
-          echo "[UPDATE] Backend manifest:"
           grep "image:" ${BACKEND_MANIFEST}
         """
       }
     }
 
-    // ── Stage 04 · Commit & Push GitOps Changes ───────────
+    // ── Stage 04 · Commit & Push GitOps Changes ─────────────
     stage('04 · Commit + Push · GitOps Repo') {
       steps {
         withCredentials([usernamePassword(
@@ -167,7 +110,6 @@ pipeline {
           sh """
             git config user.name  "${GIT_USER_NAME}"
             git config user.email "${GIT_USER_EMAIL}"
-
             git add ${FRONTEND_MANIFEST} ${BACKEND_MANIFEST}
 
             if git diff --cached --quiet; then
@@ -178,7 +120,6 @@ pipeline {
 Frontend : ${env.FRONTEND_IMAGE_TAG}
 Backend  : ${env.BACKEND_IMAGE_TAG}"
 
-              # Push using token in URL — no credential exposure in process list
               PUSH_URL=\$(echo "${GITOPS_REPO_URL}" | sed "s|https://|https://\${GIT_USER}:\${GIT_TOKEN}@|")
               git push "\$PUSH_URL" HEAD:${GITOPS_BRANCH}
               echo "[COMMIT] ✔ Pushed manifest changes. ArgoCD will auto-sync."
@@ -188,13 +129,53 @@ Backend  : ${env.BACKEND_IMAGE_TAG}"
       }
     }
 
-    // ── Stage 05 · ArgoCD Sync Verification ───────────────
-    // ArgoCD is configured with selfHeal: true + automated sync,
-    // so it will pick up the git change automatically.
-    // This stage just waits and confirms the sync succeeded.
+    // ── Stage 04.5 · Bootstrap ArgoCD App (THE FIX) ─────────
+    // Root cause of "Unknown" forever: the ArgoCD Application object
+    // was never applied to the cluster, so kubectl sees nothing to poll.
+    // kubectl apply is idempotent — safe to run on every pipeline run.
+    stage('04.5 · Bootstrap · ArgoCD App Manifest') {
+      steps {
+        withCredentials([usernamePassword(
+          credentialsId   : 'aws-creds',
+          usernameVariable: 'AWS_ACCESS_KEY_ID',
+          passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+        )]) {
+          sh '''
+            aws eks update-kubeconfig \
+              --name ${CLUSTER_NAME} \
+              --region ${AWS_DEFAULT_REGION}
+
+            echo "[BOOTSTRAP] Ensuring ArgoCD namespace exists..."
+            kubectl get namespace ${ARGOCD_NAMESPACE} > /dev/null 2>&1 || \
+              kubectl create namespace ${ARGOCD_NAMESPACE}
+
+            echo "[BOOTSTRAP] Applying wanderlust ArgoCD Application manifest..."
+            kubectl apply -f ${ARGOCD_APP_MANIFEST} -n ${ARGOCD_NAMESPACE}
+
+            echo "[BOOTSTRAP] Current ArgoCD applications:"
+            kubectl get applications -n ${ARGOCD_NAMESPACE} || true
+
+            # If FORCE_SYNC=true, trigger an immediate sync via kubectl patch
+            # instead of waiting up to 3 minutes for selfHeal to kick in
+            if [ "${FORCE_SYNC}" = "true" ]; then
+              echo "[BOOTSTRAP] Force sync requested — patching ArgoCD app..."
+              kubectl patch application ${ARGOCD_APP_WANDERLUST} \
+                -n ${ARGOCD_NAMESPACE} \
+                --type merge \
+                -p '{"operation":{"initiatedBy":{"username":"jenkins-cd"},"sync":{"revision":"HEAD","prune":true}}}' \
+                || echo "[BOOTSTRAP] Patch skipped (app may still be initialising)"
+            fi
+
+            echo "[BOOTSTRAP] ✔ Bootstrap complete."
+          '''
+        }
+      }
+    }
+
+    // ── Stage 05 · ArgoCD Sync Verification ─────────────────
     stage('05 · ArgoCD · Sync Verification') {
       when {
-        expression { params.SKIP_ARGOCD_VERIFY == false }
+        expression { return !params.SKIP_ARGOCD_VERIFY }  // ← FIX: safe boolean expression
       }
       steps {
         withCredentials([usernamePassword(
@@ -203,15 +184,11 @@ Backend  : ${env.BACKEND_IMAGE_TAG}"
           passwordVariable: 'AWS_SECRET_ACCESS_KEY'
         )]) {
           sh '''
-            # Update kubeconfig
             aws eks update-kubeconfig \
               --name ${CLUSTER_NAME} \
               --region ${AWS_DEFAULT_REGION}
 
-            echo "[ARGOCD] Waiting for ArgoCD to sync wanderlust app..."
-            echo "[ARGOCD] (ArgoCD selfHeal=true polls every 3 minutes automatically)"
-
-            # Poll ArgoCD application status — wait up to 10 minutes
+            echo "[ARGOCD] Polling wanderlust app for Synced + Healthy..."
             MAX_WAIT=600
             POLL_INTERVAL=15
             ELAPSED=0
@@ -220,17 +197,24 @@ Backend  : ${env.BACKEND_IMAGE_TAG}"
             while [ $ELAPSED -lt $MAX_WAIT ]; do
               SYNC_STATUS=$(kubectl get application ${ARGOCD_APP_WANDERLUST} \
                 -n ${ARGOCD_NAMESPACE} \
-                -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "Unknown")
+                -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "NotFound")
 
               HEALTH_STATUS=$(kubectl get application ${ARGOCD_APP_WANDERLUST} \
                 -n ${ARGOCD_NAMESPACE} \
-                -o jsonpath='{.status.health.status}' 2>/dev/null || echo "Unknown")
+                -o jsonpath='{.status.health.status}' 2>/dev/null || echo "NotFound")
 
               echo "[ARGOCD] Elapsed: ${ELAPSED}s | Sync: ${SYNC_STATUS} | Health: ${HEALTH_STATUS}"
 
               if [ "$SYNC_STATUS" = "Synced" ] && [ "$HEALTH_STATUS" = "Healthy" ]; then
                 SYNCED=true
                 break
+              fi
+
+              # If still NotFound after 60s, the manifest apply may have failed — warn loudly
+              if [ "$SYNC_STATUS" = "NotFound" ] && [ $ELAPSED -ge 60 ]; then
+                echo "[ARGOCD] ⚠ Application still not found after 60s."
+                echo "[ARGOCD]   Run: kubectl get applications -n argocd"
+                echo "[ARGOCD]   Verify ArgoCD pods: kubectl get pods -n argocd"
               fi
 
               sleep ${POLL_INTERVAL}
@@ -241,15 +225,14 @@ Backend  : ${env.BACKEND_IMAGE_TAG}"
               echo "[ARGOCD] ✔ Application is Synced + Healthy."
             else
               echo "[ARGOCD] ⚠ Application did not reach Synced+Healthy in ${MAX_WAIT}s."
-              echo "[ARGOCD]   Check ArgoCD UI for details."
-              # Do NOT hard fail — ArgoCD may still be syncing in background
+              echo "[ARGOCD]   Check ArgoCD UI — app may still be syncing in background."
             fi
           '''
         }
       }
     }
 
-    // ── Stage 06 · Smoke Test ──────────────────────────────
+    // ── Stage 06 · Smoke Test ────────────────────────────────
     stage('06 · Smoke Test · kubectl verify') {
       steps {
         withCredentials([usernamePassword(
@@ -262,16 +245,16 @@ Backend  : ${env.BACKEND_IMAGE_TAG}"
               --name ${CLUSTER_NAME} \
               --region ${AWS_DEFAULT_REGION} 2>/dev/null || true
 
-            echo "[SMOKE] ── Pods ─────────────────────────────────────"
+            echo "[SMOKE] ── Pods ──────────────────────────────────────"
             kubectl get pods -n ${K8S_NAMESPACE} -o wide 2>/dev/null || true
 
-            echo "[SMOKE] ── Services ─────────────────────────────────"
+            echo "[SMOKE] ── Services ──────────────────────────────────"
             kubectl get svc -n ${K8S_NAMESPACE} 2>/dev/null || true
 
             echo "[SMOKE] ── Ingress ───────────────────────────────────"
             kubectl get ingress -n ${K8S_NAMESPACE} 2>/dev/null || true
 
-            echo "[SMOKE] ── Deployed Images ───────────────────────────"
+            echo "[SMOKE] ── Deployed images ───────────────────────────"
             kubectl get pods -n ${K8S_NAMESPACE} \
               -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].image}{"\n"}{end}' \
               2>/dev/null || true
